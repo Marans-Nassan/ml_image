@@ -1,6 +1,7 @@
 import os
 import warnings
 
+# Reduz mensagens do TensorFlow.
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -11,7 +12,7 @@ import time
 
 PORT = "COM3"      # Pico via USB CDC (COM virtual)
 BAUD = 115200
-DIGITO = 7         # troque aqui (0..9)
+DIGITO = 8         # escolha o dígito 0..9
 
 def load_mnist_samples():
     try:
@@ -21,6 +22,7 @@ def load_mnist_samples():
             "TensorFlow/Keras nao encontrado. Instale para usar MNIST: pip install tensorflow"
         ) from exc
 
+    # Pega um exemplo por dígito do conjunto de treino do MNIST.
     (x_train, y_train), _ = mnist.load_data()
     imgs = {}
     for digit in range(10):
@@ -31,9 +33,11 @@ def load_mnist_samples():
 
 imgs = load_mnist_samples()
 
+# Seleciona o dígito e empacota em 784 bytes.
 img = np.array(imgs[DIGITO], dtype=np.uint8)
 assert img.size == 784
 
+# Abre a serial, envia imagem + label e lê a resposta do MCU.
 with serial.Serial(PORT, BAUD, timeout=5) as ser:
     time.sleep(2)
     ser.reset_input_buffer()

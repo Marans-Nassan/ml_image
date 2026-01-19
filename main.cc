@@ -15,10 +15,12 @@
 #include "pico-tflmicro/src/tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "pico-tflmicro/src/tensorflow/lite/schema/schema_generated.h"
 
+// Entrada: imagem 28x28 (784 bytes) + 1 byte de label.
 #define IMG_SIZE (28 * 28)
 #define LABEL_SIZE 1
 #define RX_SIZE (IMG_SIZE + LABEL_SIZE)
 
+// Pinos I2C do OLED na BitDogLab.
 #define I2C_PORT_B i2c1
 #define I2C_SDA_B 14
 #define I2C_SCL_B 15
@@ -38,6 +40,7 @@ static uint8_t rx_buf[IMG_SIZE];
 /* CNN precisa de arena maior */
 static uint8_t tensor_arena[128 * 1024];
 
+// Métricas acumuladas no MCU para exibir no display.
 typedef struct {
     uint32_t confusion[10][10];
     uint32_t total;
@@ -66,6 +69,7 @@ static int argmax_u8(const uint8_t *v, int n) {
     return best;
 }
 
+// Lê exatamente n bytes da USB CDC (bloqueante).
 static void read_exact(uint8_t *dst, size_t n) {
     size_t i = 0;
 
@@ -79,6 +83,7 @@ static void read_exact(uint8_t *dst, size_t n) {
     }
 }
 
+// Debug: imprime os scores brutos.
 static void print_scores(const uint8_t *scores, int n) {
     printf("Scores: ");
     for (int i = 0; i < n; i++) {
@@ -87,6 +92,7 @@ static void print_scores(const uint8_t *scores, int n) {
     printf("\n");
 }
 
+// Inicializa o I2C usado pelo OLED.
 static void init_i2c1(void) {
     i2c_init(I2C_PORT_B, 400 * 1000);
     gpio_set_function(I2C_SDA_B, GPIO_FUNC_I2C);
@@ -95,6 +101,7 @@ static void init_i2c1(void) {
     gpio_pull_up(I2C_SCL_B);
 }
 
+// Inicializa o display OLED.
 static void init_oled(void) {
     ssd1306_init(&ssd, WIDTH, HEIGHT, false, I2C_ADDRESS, I2C_PORT_B);
     ssd1306_config(&ssd);
@@ -102,6 +109,7 @@ static void init_oled(void) {
     ssd1306_send_data(&ssd);
 }
 
+// Precision/recall/F1 por classe a partir da matriz de confusão.
 static void class_metrics(const metrics_t *m, int cls, float *p, float *r, float *f1) {
     uint32_t row_sum = 0;
     uint32_t col_sum = 0;
@@ -122,6 +130,7 @@ static void class_metrics(const metrics_t *m, int cls, float *p, float *r, float
     *f1 = f1_score;
 }
 
+// Média macro de precision/recall/F1 entre todas as classes.
 static void macro_metrics(const metrics_t *m, float *p, float *r, float *f1) {
     float sp = 0.0f;
     float sr = 0.0f;
@@ -138,6 +147,7 @@ static void macro_metrics(const metrics_t *m, float *p, float *r, float *f1) {
     *f1 = sf / 10.0f;
 }
 
+// Tarefa do core1: renderiza métricas no OLED (alternando classes).
 static void core1_entry(void) {
     sleep_ms(500);
     init_i2c1();
@@ -160,24 +170,24 @@ static void core1_entry(void) {
         char line[17];
         ssd1306_fill(&ssd, false);
 
-        snprintf(line, sizeof(line), "ACC %5.1f%%", acc * 100.0f);
+        snprintf(line, sizeof(line), "Accuracy %4.1f%%", acc * 100.0f);
         ssd1306_draw_string(&ssd, line, 0, 0);
 
         if (snapshot.has_last) {
-            snprintf(line, sizeof(line), "LT T=%d P=%d", snapshot.last_true, snapshot.last_pred);
+            snprintf(line, sizeof(line), "Last T=%d P=%d", snapshot.last_true, snapshot.last_pred);
         } else {
-            snprintf(line, sizeof(line), "LT T=-- P=--");
+            snprintf(line, sizeof(line), "Last T=-- P=--");
         }
         ssd1306_draw_string(&ssd, line, 0, 8);
 
-        snprintf(line, sizeof(line), "MAC P=%0.2f", mp);
+        snprintf(line, sizeof(line), "MacroP %0.2f", mp);
         ssd1306_draw_string(&ssd, line, 0, 16);
-        snprintf(line, sizeof(line), "MAC R=%0.2f", mr);
+        snprintf(line, sizeof(line), "MacroR %0.2f", mr);
         ssd1306_draw_string(&ssd, line, 0, 24);
-        snprintf(line, sizeof(line), "MAC F=%0.2f", mf);
+        snprintf(line, sizeof(line), "MacroF1 %0.2f", mf);
         ssd1306_draw_string(&ssd, line, 0, 32);
 
-        snprintf(line, sizeof(line), "CLS %d", cls);
+        snprintf(line, sizeof(line), "Class %d", cls);
         ssd1306_draw_string(&ssd, line, 0, 40);
         snprintf(line, sizeof(line), "P=%0.2f R=%0.2f", cp, cr);
         ssd1306_draw_string(&ssd, line, 0, 48);
@@ -192,10 +202,12 @@ static void core1_entry(void) {
 }
 
 int main() {
+    // Inicializa serial USB.
     stdio_init_all();
     sleep_ms(4000);
     printf("READY\n");
 
+    // Métricas compartilhadas com o core1.
     mutex_init(&data_mutex);
     memset(&metrics, 0, sizeof(metrics));
     multicore_launch_core1(core1_entry);
@@ -240,6 +252,7 @@ int main() {
 
     while (true) {
         uint8_t label = 0xFF;
+        // Recebe imagem + label do PC.
         read_exact(rx_buf, IMG_SIZE);
         read_exact(&label, LABEL_SIZE);
 
@@ -254,6 +267,7 @@ int main() {
 
         int pred = argmax_u8(output->data.uint8, 10);
 
+        // Atualiza métricas apenas se o label for válido (0..9).
         if (label < 10) {
             mutex_enter_blocking(&data_mutex);
             metrics.total++;
