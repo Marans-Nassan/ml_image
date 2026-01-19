@@ -33,24 +33,29 @@ project(ml_image C CXX ASM)
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
+# Add TFLM library
+add_subdirectory(pico-tflmicro)
+
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(ml_image main.c )
+add_executable(ml_image main.cc )
 
 pico_set_program_name(ml_image "ml_image")
 pico_set_program_version(ml_image "0.1")
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(ml_image 0)
-pico_enable_stdio_usb(ml_image 0)
+pico_enable_stdio_usb(ml_image 1)
 
 # Add the standard library to the build
 target_link_libraries(ml_image
-        pico_stdlib)
+        pico_stdlib
+        pico-tflmicro)
 
 # Add the standard include files to the build
 target_include_directories(ml_image PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_LIST_DIR}/pico-tflmicro/src
 )
 
 # Add any user requested libraries
