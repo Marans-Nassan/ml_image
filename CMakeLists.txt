@@ -38,7 +38,9 @@ add_subdirectory(pico-tflmicro)
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(ml_image main.cc )
+add_executable(ml_image 
+main.cc
+lib/ssd1306.c )
 
 pico_set_program_name(ml_image "ml_image")
 pico_set_program_version(ml_image "0.1")
@@ -50,11 +52,14 @@ pico_enable_stdio_usb(ml_image 1)
 # Add the standard library to the build
 target_link_libraries(ml_image
         pico_stdlib
+        pico_multicore
+        hardware_i2c
         pico-tflmicro)
 
 # Add the standard include files to the build
 target_include_directories(ml_image PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_LIST_DIR}/lib
         ${CMAKE_CURRENT_LIST_DIR}/pico-tflmicro/src
 )
 
